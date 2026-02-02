@@ -1,0 +1,5 @@
+streamlit
+scrapetube
+pandas
+numpy
+requests

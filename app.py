@@ -1,13 +1,15 @@
 import streamlit as st
-from scrapetube import get_search
+import scrapetube
 import pandas as pd
 import numpy as np
+from datetime import datetime
+import time
 import re
 from collections import Counter
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-
+import socket
 
 # Sayfa ayarları
 st.set_page_config(
@@ -70,23 +72,16 @@ st.markdown("""
 st.title("📈 Niche Oracle Ghost Protocol (V22)")
 st.markdown("Güncel Pazar Analizi: Gelişmiş Erişim Koruması ve Trend Takibi")
 
-# V22 Ghost Protocol: Gelişmiş İstek Yönetimi
-def get_safe_session():
-    session = requests.Session()
-    retry = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-    )
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'https://www.google.com/'
-    })
-    return session
+# DNS ve Bağlantı Kontrolü
+def check_youtube_access():
+    try:
+        # DNS Çözümleme Testi
+        socket.gethostbyname("www.youtube.com")
+        return True, "DNS OK"
+    except socket.gaierror:
+        return False, "DNS_ERROR: Sunucu YouTube adresini çözemiyor (Hugging Face kısıtlaması)."
+    except Exception as e:
+        return False, f"UNKNOWN_ERROR: {str(e)}"
 
 # Yardımcı Fonksiyonlar
 def parse_duration(duration_str):
@@ -119,6 +114,8 @@ def get_vph(views, published_text):
         return vph if vph < views else views / (24 * 30)
     except:
         return 0
+
+def get_channel_stats(channel_id):
     try:
         videos = list(scrapetube.get_channel(channel_id, limit=10))
         views = []
@@ -152,26 +149,21 @@ query = st.text_input("Niş veya Anahtar Kelime", placeholder="Örn: AI News, Su
 
 if query:
     with st.spinner(f"'{query}' nişi için stratejik analiz yapılıyor..."):
+        # DNS Kontrolü
+        is_ok, msg = check_youtube_access()
+        if not is_ok:
+            st.markdown(f"""
+            <div class="error-box">
+                ⚠️ <b>Erişim Engeli Tespit Edildi:</b> {msg}<br><br>
+                <b>Neden:</b> Hugging Face sunucuları YouTube'a erişimi DNS seviyesinde engelliyor.<br>
+                <b>Çözüm:</b> Bu sorunu aşmak için uygulamayı <b>Streamlit Cloud</b> veya <b>Render</b> platformuna taşımanız gerekmektedir. 
+                Manus üzerinden size gönderilen <b>app.py</b> ve <b>requirements.txt</b> dosyalarını kullanarak kendi Streamlit Cloud hesabınızda saniyeler içinde yayına alabilirsiniz.
+            </div>
+            """, unsafe_allow_html=True)
+            st.stop()
+
         try:
-            # V22: Erişim Kontrolü
-            try:
-                # Önce bir test isteği atarak YouTube erişimini kontrol et
-                session = get_safe_session()
-                test_req = session.get("https://www.youtube.com", timeout=10)
-                test_req.raise_for_status()
-            except Exception as e:
-                st.markdown(f"""
-                <div class="error-box">
-                    ⚠️ <b>YouTube Erişim Hatası:</b> Sunucu şu an YouTube'a bağlanamıyor.<br>
-                    <i>Hata Detayı: {str(e)}</i><br><br>
-                    <b>Çözüm:</b> Bu durum genellikle bulut sunucularındaki geçici DNS veya IP kısıtlamalarından kaynaklanır. 
-                    Lütfen birkaç dakika sonra tekrar deneyin veya farklı bir anahtar kelime ile testi yenileyin.
-                </div>
-                """, unsafe_allow_html=True)
-                st.stop()
-
-            videos = get_search(query, limit=scan_limit, sort_by="upload_date")
-
+            videos = scrapetube.get_search(query, limit=scan_limit, sort_by="upload_date")
             
             results = []
             titles = []
@@ -181,7 +173,6 @@ if query:
             
             progress = st.progress(0)
             
-            # Veri toplama döngüsü
             video_list = list(videos)
             if not video_list:
                 st.warning("Hiç video bulunamadı. Lütfen arama teriminizi kontrol edin.")
@@ -230,9 +221,10 @@ if query:
                 total_views += v_views
                 titles.append(v_title)
                 
-                # Örnekleme ile kanal analizi (Hız için)
                 if i % 10 == 0:
-                 
+                    stats = get_channel_stats(v_channel_id)
+                    median = stats["median"]
+                    outlier_score = v_views / median
                     if outlier_score > 5: outlier_count += 1
                     if v_views > 100000: small_channel_success += 1
                 

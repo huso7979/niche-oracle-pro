@@ -1,14 +1,13 @@
 import streamlit as st
-import scrapetube
+from scrapetube import get_search
 import pandas as pd
 import numpy as np
-from datetime import datetime
-import time
 import re
 from collections import Counter
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
 
 # Sayfa ayarları
 st.set_page_config(
@@ -120,8 +119,6 @@ def get_vph(views, published_text):
         return vph if vph < views else views / (24 * 30)
     except:
         return 0
-
-def get_channel_stats(channel_id):
     try:
         videos = list(scrapetube.get_channel(channel_id, limit=10))
         views = []
@@ -173,7 +170,8 @@ if query:
                 """, unsafe_allow_html=True)
                 st.stop()
 
-            videos = scrapetube.get_search(query, limit=scan_limit, sort_by="upload_date")
+            videos = get_search(query, limit=scan_limit, sort_by="upload_date")
+
             
             results = []
             titles = []
@@ -234,9 +232,7 @@ if query:
                 
                 # Örnekleme ile kanal analizi (Hız için)
                 if i % 10 == 0:
-                    stats = get_channel_stats(v_channel_id)
-                    median = stats["median"]
-                    outlier_score = v_views / median
+                 
                     if outlier_score > 5: outlier_count += 1
                     if v_views > 100000: small_channel_success += 1
                 
